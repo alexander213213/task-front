@@ -31,7 +31,7 @@ const techStack = ['Vue 3','TypeScript','Vite','Naive UI','Node.js','Express','P
 
 const router = useRouter()
 
-const githubLink = "https://github.com/alexander213213/task-api"
+const githubLink = "https://github.com/alexander213213/task-front"
 
 function goToApp() {
     router.push("/auth/login")
