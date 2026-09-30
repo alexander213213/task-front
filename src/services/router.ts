@@ -5,6 +5,9 @@ import Landing from "../pages/Landing.vue";
 import Signup from "../pages/Signup.vue";
 import FeedView from "../pages/FeedView.vue";
 import TaskDetailView from "../pages/TaskDetailView.vue";
+import MyTasksView from "../pages/MyTasksView.vue";
+import AssignedView from "../pages/AssignedView.vue";
+import ProfileView from "../pages/ProfileView.vue";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -19,6 +22,9 @@ const routes = [
   { path: "/auth/signup", component: Signup, meta: { guestOnly: true } },
   { path: "/feed", component: FeedView, meta: { requiresAuth: true } },
   { path: "/tasks/:id", component: TaskDetailView, meta: { requiresAuth: true } },
+  { path: "/my-tasks", component: MyTasksView, meta: { requiresAuth: true } },
+  { path: "/assigned", component: AssignedView, meta: { requiresAuth: true } },
+  { path: "/profile", component: ProfileView, meta: { requiresAuth: true } },
   // Legacy route from the first build; the feed owns browsing now.
   { path: "/tasks", redirect: "/feed" },
   { path: "/:pathMatch(.*)*", redirect: "/" },

@@ -21,6 +21,7 @@ declare module 'vue' {
     CardFooter: typeof import('./src/components/ui/card/CardFooter.vue')['default']
     CardHeader: typeof import('./src/components/ui/card/CardHeader.vue')['default']
     CardTitle: typeof import('./src/components/ui/card/CardTitle.vue')['default']
+    ConfirmDialog: typeof import('./src/components/ConfirmDialog.vue')['default']
     Dialog: typeof import('./src/components/ui/dialog/Dialog.vue')['default']
     DialogContent: typeof import('./src/components/ui/dialog/DialogContent.vue')['default']
     DialogDescription: typeof import('./src/components/ui/dialog/DialogDescription.vue')['default']
@@ -45,6 +46,7 @@ declare module 'vue' {
     Separator: typeof import('./src/components/ui/separator/Separator.vue')['default']
     Skeleton: typeof import('./src/components/ui/skeleton/Skeleton.vue')['default']
     Sonner: typeof import('./src/components/ui/sonner/Sonner.vue')['default']
+    StarsInput: typeof import('./src/components/StarsInput.vue')['default']
     TaskCard: typeof import('./src/components/TaskCard.vue')['default']
     Textarea: typeof import('./src/components/ui/textarea/Textarea.vue')['default']
   }
