@@ -20,7 +20,6 @@ vi.mock("@/composables/useAuth", () => {
 
 type MockAuth = { __setUser: (next: unknown) => void };
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 async function auth(): Promise<MockAuth> {
   const mod = (await import("@/composables/useAuth")) as unknown as { useAuth: () => MockAuth };
   return mod.useAuth();
@@ -33,26 +32,36 @@ describe("router guards", () => {
   });
 
   it("redirects guests away from guarded routes", async () => {
+    await router.push("/feed");
+    expect(router.currentRoute.value.path).toBe("/auth/login");
+    expect(router.currentRoute.value.query.redirect).toBe("/feed");
+  });
+
+  it("redirects the legacy /tasks route to /feed for guests via login", async () => {
     await router.push("/tasks");
     expect(router.currentRoute.value.path).toBe("/auth/login");
-    expect(router.currentRoute.value.query.redirect).toBe("/tasks");
   });
 
   it("lets authed users into guarded routes", async () => {
     (await auth()).__setUser({ id: "u1", username: "tester" });
-    await router.push("/tasks");
-    expect(router.currentRoute.value.path).toBe("/tasks");
+    await router.push("/feed");
+    expect(router.currentRoute.value.path).toBe("/feed");
   });
 
   it("redirects authed users away from guest routes", async () => {
     (await auth()).__setUser({ id: "u1", username: "tester" });
     await router.push("/auth/login");
-    expect(router.currentRoute.value.path).toBe("/tasks");
+    expect(router.currentRoute.value.path).toBe("/feed");
   });
 
   it("honors the redirect target after login", async () => {
     (await auth()).__setUser({ id: "u1", username: "tester" });
-    await router.push({ path: "/auth/login", query: { redirect: "/tasks" } });
-    expect(router.currentRoute.value.path).toBe("/tasks");
+    await router.push({ path: "/auth/login", query: { redirect: "/feed" } });
+    expect(router.currentRoute.value.path).toBe("/feed");
+  });
+
+  it("sends unknown paths to landing", async () => {
+    await router.push("/nope");
+    expect(router.currentRoute.value.path).toBe("/");
   });
 });

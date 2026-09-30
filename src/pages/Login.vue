@@ -20,7 +20,7 @@ interface GoogleCredentialResponse {
   credential: string;
 }
 
-// Compatibility re-export until Tasks.vue migrates to services/types in F3.
+// Compatibility re-export until callers migrate to services/types.
 export type { UserData } from "../services/types";
 
 declare global {
@@ -58,7 +58,7 @@ const linkError = ref("");
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
 function destination(): string {
-  return typeof route.query.redirect === "string" ? route.query.redirect : "/tasks";
+  return typeof route.query.redirect === "string" ? route.query.redirect : "/feed";
 }
 
 async function onSubmit(): Promise<void> {
