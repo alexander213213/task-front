@@ -1,348 +1,67 @@
-# Task Marketplace Demo
+# Task Marketplace Frontend
 
-A full-stack web application that simulates the core lifecycle of a task marketplace.
+Vue 3 + TypeScript single-page app for the task marketplace API. Users browse tasks, propose, get assigned, submit work, and review, with live updates pushed over server-sent events.
 
-Users can post tasks, submit proposals, assign workers, submit completed work, and finalize tasks with ratings and reviews.
+The API lives in `task-api` and documents itself at `GET /openapi` (Scalar UI) and `GET /openapi.json`.
 
-This project was built as a **portfolio demonstration** to showcase practical full-stack development skills through a realistic product workflow rather than a simple CRUD application.
+## Routes
 
-The system focuses on **state-driven task lifecycle management, backend data integrity, and structured frontend interaction flows.**
+- `/` is the landing page.
+- `/auth/login` and `/auth/signup` are guest-only; signed-in users are sent to the app.
+- `/feed` is the open-task feed with sort, search, and reward filters plus infinite scroll.
+- `/tasks/:id` is the detail view: owner and tasker profiles, review, proposal count, your own bid, and proposal management for owners.
+- `/my-tasks` is everything you posted, with filters and per-status actions (edit, cancel, delete, unassign, confirm + review).
+- `/assigned` is work assigned to you, with the submit flow.
+- `/profile` shows your stats, rating, and session controls including logout everywhere.
 
----
-
-# Demo Scope
-
-This project intentionally focuses on the **core marketplace lifecycle**.
-
-The goal is to demonstrate:
-
-- backend workflow design
-- authenticated API architecture
-- data integrity and transactional updates
-- realistic product state transitions
-- modular frontend UI implementation
-
-Some features that would normally exist in production platforms were **intentionally deferred** to fit the project timeline.
-
-Deferred features include:
-
-- real-time updates via **Server-Sent Events**
-- **direct chat** between task owners and taskers
-- push notification systems
-
-Despite these omissions, the application fully demonstrates the engineering decisions required to build a functioning task marketplace.
-
----
-
-# Demo Accounts and Seed Data
-
-The demo environment is automatically populated with **seed data** to make it easier to explore the platform and test different workflows.
-
-The seed data includes:
-
-- multiple users
-- tasks in different lifecycle states
-- proposals
-- reviews and ratings
-
-For convenience, **all demo users use the same password**:
-
-```
-Password123!
-```
-
-You can log in using any seeded account to explore both the task owner and tasker workflows.
-
----
-
-# Core Task Lifecycle
-
-The platform models tasks as a controlled workflow instead of allowing arbitrary updates.
-
-```
-OPEN → ASSIGNED → SUBMITTED → COMPLETED
-```
-
-Supported transitions include:
-
-| From | To | Description |
-|-----|-----|-------------|
-| OPEN | ASSIGNED | Owner selects a worker |
-| ASSIGNED | SUBMITTED | Worker submits completed work |
-| SUBMITTED | COMPLETED | Owner confirms completion |
-| OPEN | CANCELLED | Owner cancels task |
-| ASSIGNED/SUBMITTED | OPEN | Owner reopens task |
-
-Reviews are only allowed after a task reaches **COMPLETED**.
-
----
-
-# Features
+Route guards revalidate the session and remember where you were going, so a login redirect lands back on the original page.
 
 ## Authentication
 
-- JWT-based authentication
-- refresh-token session flow
-- protected API routes
+Sessions are cookie based and managed by a shared `useAuth` composable. Login accepts a username or an email. Google sign-in uses Google Identity Services: a linked account signs straight in, a new Google email creates an account, and an email that already belongs to a password account asks for the password once to link the two.
 
-## Task Management
+## Data layer
 
-- create and manage tasks
-- reward and deadline system
-- task browsing and filtering
+There is no store library and no query library, by choice. Three hand-rolled pieces cover it:
 
-## Proposal System
+- `src/services/api.ts` is the typed transport. It returns the envelope's `data`, throws `ApiError` with machine codes and Zod issues, and retries once after a transparent cookie refresh.
+- `src/services/resources/` has one typed module per API area (auth, tasks, proposals, users), including Decimal-string reward and ISO-date normalization.
+- `src/composables/` holds `useAuth`, `useForm` (Zod validation with server-issue mapping), `usePaginatedFeed` (opaque keyset cursors, id dedupe), and `useEventSource` (backoff reconnect, health tracking).
 
-- taskers can submit proposals
-- task owners review proposals
-- owners assign a worker
+## Realtime
 
-## Task Progression
+A renderless host opens the `/events` stream when signed in. Notification events (proposals, assignment, submission, confirmation, reviews) raise toasts that link into the affected task. New tasks raise a refresh pill on the feed instead of being prepended, and the detail view reloads when its own task changes. If the stream stays unhealthy, views poll every 45 seconds until it recovers.
 
-- worker submission flow
-- owner confirmation flow
-- lifecycle enforcement
+## UI
 
-## Review System
+Tailwind CSS v4 with shadcn-vue components on Reka UI primitives, in a dark theme with a mint accent. The component set lives in `src/components/ui/` and is owned by this repo (copied, not installed). Icons are Lucide, toasts are Sonner.
 
-- ratings and comments
-- restricted to completed tasks
+## Setup
 
-## Backend Safety
+You need Node 22+. The API must be running first (see `task-api`, default `http://localhost:8000`).
 
-- guarded lifecycle transitions
-- schema validation using Zod
-- transactional updates for rating and review logic
-
-## Frontend
-
-- Vue + TypeScript UI
-- form validation and dialogs
-- drawer-based task views
-- responsive layout
-
----
-
-# Tech Stack
-
-## Frontend
-
-- Vue 3
-- TypeScript
-- Vite
-- Naive UI
-
-## Backend
-
-- Node.js
-- Express
-- Prisma ORM
-- PostgreSQL
-
-## Infrastructure / Utilities
-
-- JWT authentication
-- Zod validation
-- cursor-based pagination
-
----
-
-# System Architecture
-
-The application follows a typical **client–server architecture**.
-
-The frontend communicates with a REST API built using Express.  
-The backend handles authentication, business logic, and task lifecycle enforcement while persisting data using Prisma ORM with PostgreSQL.
-
-```
-Client (Vue App)
-        │
-        │ HTTP JSON API
-        ▼
-Express Server
-        │
-        ├── Authentication Layer
-        ├── Request Validation (Zod)
-        ├── Task Lifecycle Logic
-        └── Database Access (Prisma)
-                │
-                ▼
-           PostgreSQL
-```
-
-This structure keeps the application modular and easier to maintain.
-
----
-
-# Architecture Highlights
-
-## Lifecycle-driven design
-
-Tasks follow strict state transitions to prevent invalid actions.  
-For example, a task cannot be marked as completed unless it has first been submitted.
-
-## Transactional updates
-
-Operations involving reviews and ratings run inside database transactions to ensure data consistency.
-
-## Validation layer
-
-All incoming API requests are validated using **Zod schemas** before reaching the application logic.
-
-## Separation of concerns
-
-The backend separates:
-
-- route handlers
-- validation
-- database services
-- business logic
-
-This structure helps keep the codebase maintainable and easier to extend.
-
----
-
-# Example API Request
-
-Create a new task:
-
-```
-POST /tasks
-```
-
-Request body:
-
-```json
-{
-  "title": "Pick up groceries",
-  "description": "Buy items from the list",
-  "reward": 300,
-  "deadline": "2026-04-01T10:00:00Z"
-}
-```
-
-Example response:
-
-```json
-{
-  "id": "task_123",
-  "title": "Pick up groceries",
-  "status": "OPEN",
-  "reward": 300,
-  "deadline": "2026-04-01T10:00:00Z"
-}
-```
-
----
-
-# Project Structure
-
-Example structure:
-
-```
-backend/
-  src/
-    routes/
-    controllers/
-    services/
-    middleware/
-    schemas/
-    utils/
-
-frontend/
-  src/
-    components/
-    views/
-    api/
-    composables/
-    router/
-```
-
----
-
-# Screenshots
-
-## Landing Page
-![Landing Page](./screenshots/landing.png)
-
-## Task Feed
-![Task Feed](./screenshots/tasks.png)
-
-## Task Details
-![Task Details](./screenshots/task-details.png)
-
----
-
-# Running the Project
-
-## Prerequisites
-
-- Node.js 18+
-- PostgreSQL
-- npm or pnpm
-
----
-
-## Backend Setup
-
-```
-cd backend
-npm install
-cp .env.example .env
-```
-
-Configure your database connection in `.env`.
-
-Run database migrations:
-
-```
-npx prisma migrate dev
-```
-
-Start the backend server:
-
-```
-npm run dev
-```
-
----
-
-## Frontend Setup
-
-```
-cd frontend
+```bash
 npm install
 npm run dev
 ```
 
----
+Environment (`.env`, gitignored):
 
-# Future Improvements
+```env
+VITE_API_URL=http://localhost:8000
+VITE_GOOGLE_CLIENT_ID=   # optional; hides the Google button when unset
+```
 
-Planned improvements include:
+Other scripts: `npm test` runs the Vitest suite, `npm run build` typechecks and builds for Vercel (`vercel.json` included).
 
-- Server-Sent Events for real-time task updates
-- direct messaging between task owners and taskers
-- notification system for workflow changes
-- improved UI/UX polish
-- production deployment configuration
+## Seed logins
 
----
+Against a seeded API, every account uses `Password123!`. Known fixtures: `seed.password@example.com` for the link-required path, `seed.both@example.com` for a linked account, `seed.google@example.com` for a Google-only account.
 
-# Why This Project Exists
+## Demos and screenshots
 
-This project was built to demonstrate the ability to:
+The `screenshots/` references from the first build no longer exist; the landing page inside the app is the current tour.
 
-- design a realistic product workflow
-- implement backend state logic
-- coordinate frontend and backend behavior
-- build a structured full-stack application from scratch
+## License
 
-Rather than focusing only on CRUD endpoints, the application models **real system behavior and constraints** commonly found in marketplace platforms.
-
----
-
-# Author
-
-Alexander Gracilla  
-Full-Stack Developer
+MIT
