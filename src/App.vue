@@ -1,61 +1,39 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted } from 'vue';
 import { darkTheme, type GlobalThemeOverrides } from "naive-ui"
 import { RouterView } from 'vue-router';
-import { type UserData } from './pages/Login.vue';
-import { api } from './services/api';
+import { useAuth } from './composables/useAuth';
+import Sonner from './components/ui/sonner/Sonner.vue';
 
-const user = ref<UserData | null>(null)
-const authReady = ref(false)
-const theme = ref(darkTheme)
+const auth = useAuth()
+const theme = darkTheme
 
-
-onMounted(async () => {
-  try {
-    const res = await api.get<{ok: boolean, user: UserData}>("/auth/me")
-    user.value = res.user
-  } catch {
-    user.value = null
-  } finally {
-    authReady.value = true
-  }
+onMounted(() => {
+  void auth.init()
 })
-
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
     bodyColor: "#242424",
   }
 }
-
-function setUser(u: UserData) {
-  user.value = u
-}
-
-function removeUser() {
-  user.value = null
-}
-
 </script>
 
 <template>
-    <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
-      <n-message-provider>
-        <n-modal-provider>
-          <n-dialog-provider>
-            <RouterView v-slot="{ Component, route }" v-if="authReady">
-    <component
-      :is="Component"
-      :user="user"
-      v-bind="route.fullPath === '/auth/login' ? { setUser } : route.fullPath === '/tasks' ? { removeUser } : {}"
-    />
-  </RouterView>
-          </n-dialog-provider>
-        </n-modal-provider>
-      </n-message-provider>
-    </n-config-provider>
+  <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
+    <n-message-provider>
+      <n-modal-provider>
+        <n-dialog-provider>
+          <Sonner />
+          <RouterView v-slot="{ Component, route }" v-if="auth.ready.value">
+            <component
+              :is="Component"
+              :user="auth.user.value"
+              v-bind="route.fullPath === '/auth/login' ? { setUser: auth.setUser } : route.fullPath === '/tasks' ? { removeUser: auth.clearUser } : {}"
+            />
+          </RouterView>
+        </n-dialog-provider>
+      </n-modal-provider>
+    </n-message-provider>
+  </n-config-provider>
 </template>
-
-<style scoped>
-
-</style>

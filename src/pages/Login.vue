@@ -1,169 +1,215 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useMessage, type FormInst, type FormRules } from 'naive-ui'
-import { api } from '../services/api';
-import { useRouter } from 'vue-router';
+import { onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { z } from "zod";
+import { toast } from "vue-sonner";
+import { useAuth, isLinkRequired } from "../composables/useAuth";
+import { useForm } from "../composables/useForm";
+import { ApiError } from "../services/api";
+import Button from "../components/ui/button/Button.vue";
+import Card from "../components/ui/card/Card.vue";
+import CardContent from "../components/ui/card/CardContent.vue";
+import CardDescription from "../components/ui/card/CardDescription.vue";
+import CardHeader from "../components/ui/card/CardHeader.vue";
+import CardTitle from "../components/ui/card/CardTitle.vue";
+import Input from "../components/ui/input/Input.vue";
+import Label from "../components/ui/label/Label.vue";
+import Separator from "../components/ui/separator/Separator.vue";
 
-export type UserData = {
-    id: string;
-    username: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    middleName: string | null;
-    ratingAvg: number;
-    ratingCount: number;
+interface GoogleCredentialResponse {
+  credential: string;
 }
 
-const props = defineProps<{
-    setUser: (user: UserData) => void,
-    user: UserData | null
-}>()
+// Compatibility re-export until Tasks.vue migrates to services/types in F3.
+export type { UserData } from "../services/types";
 
-
-const router = useRouter()
-
-const formRef = ref<FormInst | null>(null)
-const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-const loading = ref(false)
-const message = useMessage()
-
-const formModel = ref({
-    identifier: "",
-    password: ""
-})
-
-if (props.user) {
-    router.push("/tasks")
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize(opts: { client_id: string; callback: (res: GoogleCredentialResponse) => void }): void;
+          renderButton(el: HTMLElement, opts: Record<string, unknown>): void;
+        };
+      };
+    };
+  }
 }
 
-const rules: FormRules = {
-    identifier: [
-        { required: true, message: "Username or email is required", trigger: "blur" },
-        {
-            validator: (_, value: string) => {
-                if (!value) return true
-                const isEmail = emailRegex.test(value)
-                const isUsername = usernameRegex.test(value)
+const loginSchema = z.object({
+  identifier: z.string().min(1, "Username or email is required"),
+  password: z.string().min(1, "Password is required"),
+});
 
-                if (!isEmail && !isUsername) {
-                    return new Error("Enter valid email or username (3-20 chars, underscore, numbers)")
-                }
-                return true
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-            },
-            trigger: ["blur", "input"]
-        }
-    ],
-    password: [
-        { required: true, message: "Password is required", trigger: "blur" },
-        { min: 8, message: "Minimum of 8 characters", trigger: ["blur", "input"] }
-    ]
+const router = useRouter();
+const route = useRoute();
+const auth = useAuth();
+
+const form = useForm(loginSchema, { identifier: "", password: "" });
+const googleReady = ref(false);
+const googleButtonEl = ref<HTMLElement | null>(null);
+const linkRequired = ref(false);
+const linkToken = ref("");
+const linkPassword = ref("");
+const linkError = ref("");
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+
+function destination(): string {
+  return typeof route.query.redirect === "string" ? route.query.redirect : "/tasks";
 }
 
-const canSubmit = computed(() => {
-    return formModel.value.identifier.trim().length > 0 && formModel.value.password.length > 0 && !loading.value
-})
-
-const isEmail = computed(() => {
-    return emailRegex.test(formModel.value.identifier)
-})
-
-async function onSubmit() {
-    if (!formRef.value) return
-
-    try {
-        await formRef.value.validate()
-    } catch {
-        return
+async function onSubmit(): Promise<void> {
+  const valid = form.validateAll();
+  if (!valid.ok) return;
+  form.submitting.value = true;
+  try {
+    const id = valid.data.identifier.trim();
+    await auth.login(
+      emailRegex.test(id)
+        ? { email: id, password: valid.data.password }
+        : { username: id, password: valid.data.password }
+    );
+    toast.success("Logged in");
+    await router.push(destination());
+  } catch (err) {
+    if (err instanceof ApiError) {
+      form.applyServerError(err);
+      toast.error(err.message);
+    } else {
+      toast.error("Login failed");
     }
-
-    try {
-        loading.value = true
-
-        const payload = isEmail.value
-            ? { email: formModel.value.identifier, password: formModel.value.password }
-            : { username: formModel.value.identifier, password: formModel.value.password }
-
-        const {user} = await api.post<{ ok: boolean; message?: string; user?: UserData }>(
-            "/auth/login",
-            payload
-        )
-        props.setUser(user!)
-        message.success("Login successful")
-        router.push("/tasks")
-    } catch (err) {
-        const msg = err instanceof Error ? err.message : "Request failed"
-        message.error(msg)
-    } finally {
-        loading.value = false
-    }
+  } finally {
+    form.submitting.value = false;
+  }
 }
 
+async function handleGoogleCredential(res: GoogleCredentialResponse): Promise<void> {
+  linkRequired.value = false;
+  linkError.value = "";
+  try {
+    await auth.googleLogin(res.credential);
+    toast.success("Logged in with Google");
+    await router.push(destination());
+  } catch (err) {
+    if (isLinkRequired(err)) {
+      linkToken.value = res.credential;
+      linkRequired.value = true;
+    } else if (err instanceof ApiError) {
+      toast.error(err.message);
+    } else {
+      toast.error("Google sign-in failed");
+    }
+  }
+}
 
+async function onLinkSubmit(): Promise<void> {
+  if (!linkPassword.value) {
+    linkError.value = "Password is required to link accounts";
+    return;
+  }
+  try {
+    await auth.googleLink(linkToken.value, linkPassword.value);
+    toast.success("Google account linked");
+    await router.push(destination());
+  } catch (err) {
+    linkError.value = err instanceof ApiError ? err.message : "Linking failed";
+  }
+}
+
+function loadGis(): void {
+  if (!GOOGLE_CLIENT_ID || window.google?.accounts) {
+    setupGoogleButton();
+    return;
+  }
+  const script = document.createElement("script");
+  script.src = "https://accounts.google.com/gsi/client";
+  script.async = true;
+  script.defer = true;
+  script.onload = () => setupGoogleButton();
+  document.head.appendChild(script);
+}
+
+function setupGoogleButton(): void {
+  if (!GOOGLE_CLIENT_ID || !window.google?.accounts || !googleButtonEl.value) return;
+  window.google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: (res) => void handleGoogleCredential(res),
+  });
+  window.google.accounts.id.renderButton(googleButtonEl.value, { theme: "filled_black", size: "large", width: 320 });
+  googleReady.value = true;
+}
+
+onMounted(() => {
+  loadGis();
+});
 </script>
 
 <template>
-    <div class="page">
-        <n-card class="card">
-            <div class="header">
-                <n-h2>
-                    Welcome Back
-                </n-h2>
-                <n-text depth="3">
-                    Sign in to continue
-                </n-text>
-            </div>
-            <n-form ref="formRef" :model="formModel" label-width="80" label-placement="top" :rules="rules"
-                @submit.prevent="onSubmit">
-                <n-form-item label="Username or Email" path="identifier">
-                    <n-input v-model:value="formModel.identifier" clearable placeholder="Username or Email" />
-                </n-form-item>
+  <div class="grid min-h-[80vh] place-items-center p-6">
+    <Card class="w-full max-w-[400px]">
+      <CardHeader>
+        <CardTitle>Welcome back</CardTitle>
+        <CardDescription>Sign in to continue</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form class="grid gap-4" @submit.prevent="onSubmit">
+          <div class="grid gap-2">
+            <Label for="identifier">Username or email</Label>
+            <Input
+              id="identifier"
+              v-model="form.values.identifier"
+              placeholder="Username or email"
+              autocomplete="username"
+              @blur="form.touch('identifier')"
+            />
+            <p v-if="form.getError('identifier')" class="text-xs text-destructive">{{ form.getError('identifier') }}</p>
+          </div>
 
-                <n-form-item label="Password" path="password">
-                    <n-input v-model:value="formModel.password" type="password" show-password-on="click"
-                        placeholder="Password" />
-                </n-form-item>
-                <n-button type="primary" block :loading="loading" :disabled="!canSubmit" attr-type="submit">
-                    Login
-                </n-button>
-                <n-divider></n-divider>
-                <div class="footer">
-                    <n-text depth="3">Don't have an account?</n-text>
-                    <n-button text type="primary" @click="router.push('/auth/signup')">
-                        Create one
-                    </n-button>
-                </div>
-            </n-form>
-        </n-card>
-    </div>
+          <div class="grid gap-2">
+            <Label for="password">Password</Label>
+            <Input
+              id="password"
+              v-model="form.values.password"
+              type="password"
+              placeholder="Password"
+              autocomplete="current-password"
+              @blur="form.touch('password')"
+            />
+            <p v-if="form.getError('password')" class="text-xs text-destructive">{{ form.getError('password') }}</p>
+          </div>
+
+          <Button type="submit" :disabled="form.submitting.value" class="w-full">
+            {{ form.submitting.value ? "Signing in..." : "Login" }}
+          </Button>
+        </form>
+
+        <div v-if="GOOGLE_CLIENT_ID" class="mt-4 grid gap-3">
+          <div class="flex items-center gap-3">
+            <Separator class="flex-1" />
+            <span class="text-xs text-muted-foreground">or</span>
+            <Separator class="flex-1" />
+          </div>
+          <div ref="googleButtonEl" class="flex justify-center" />
+          <p v-if="!googleReady" class="text-center text-xs text-muted-foreground">Loading Google sign-in...</p>
+
+          <form v-if="linkRequired" class="grid gap-2 rounded-md border border-input p-3" @submit.prevent="onLinkSubmit">
+            <p class="text-xs text-muted-foreground">
+              This email already has an account. Enter its password to link Google.
+            </p>
+            <Input v-model="linkPassword" type="password" placeholder="Account password" autocomplete="current-password" />
+            <p v-if="linkError" class="text-xs text-destructive">{{ linkError }}</p>
+            <Button type="submit" size="sm">Link Google account</Button>
+          </form>
+        </div>
+
+        <div class="mt-4 flex items-center justify-center gap-2 text-sm">
+          <span class="text-muted-foreground">Don't have an account?</span>
+          <Button variant="link" class="h-auto p-0" @click="router.push('/auth/signup')">Create one</Button>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
 </template>
-
-<style scoped>
-.page {
-    display: grid;
-    place-items: center;
-    min-height: 80vh;
-    padding: 24px;
-}
-
-.card {
-    width: 100%;
-    max-width: 400px;
-    min-width: min(400px, 100vw);
-}
-
-.header {
-    display: grid;
-    margin-bottom: 24px;
-}
-
-.footer {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-}
-</style>
