@@ -42,6 +42,7 @@ declare module 'vue' {
     NText: typeof import('naive-ui')['NText']
     NUl: typeof import('naive-ui')['NUl']
     ProposalsManager: typeof import('./src/components/ProposalsManager.vue')['default']
+    RealtimeHost: typeof import('./src/components/RealtimeHost.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Separator: typeof import('./src/components/ui/separator/Separator.vue')['default']
