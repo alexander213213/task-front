@@ -3,7 +3,8 @@ import { useAuth } from "../composables/useAuth";
 import Login from "../pages/Login.vue";
 import Landing from "../pages/Landing.vue";
 import Signup from "../pages/Signup.vue";
-import Tasks from "../pages/Tasks.vue";
+import FeedView from "../pages/FeedView.vue";
+import TaskDetailView from "../pages/TaskDetailView.vue";
 
 declare module "vue-router" {
   interface RouteMeta {
@@ -16,8 +17,10 @@ const routes = [
   { path: "/", component: Landing },
   { path: "/auth/login", component: Login, meta: { guestOnly: true } },
   { path: "/auth/signup", component: Signup, meta: { guestOnly: true } },
-  // Legacy feed route; F3 splits this into /feed, /tasks/:id, /my-tasks, /assigned.
-  { path: "/tasks", component: Tasks, meta: { requiresAuth: true } },
+  { path: "/feed", component: FeedView, meta: { requiresAuth: true } },
+  { path: "/tasks/:id", component: TaskDetailView, meta: { requiresAuth: true } },
+  // Legacy route from the first build; the feed owns browsing now.
+  { path: "/tasks", redirect: "/feed" },
   { path: "/:pathMatch(.*)*", redirect: "/" },
 ];
 
@@ -34,7 +37,7 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
     return { path: "/auth/login", query: { redirect: to.fullPath } };
   }
   if (to.meta.guestOnly && auth.isAuthed.value) {
-    const redirect = typeof to.query.redirect === "string" ? to.query.redirect : "/tasks";
+    const redirect = typeof to.query.redirect === "string" ? to.query.redirect : "/feed";
     return { path: redirect };
   }
   return true;

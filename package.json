@@ -33,6 +33,7 @@
     "@vicons/material": "^0.13.0",
     "@vicons/tabler": "^0.13.0",
     "@vitejs/plugin-vue": "^6.0.2",
+    "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.8.1",
     "happy-dom": "^20.14.5",
     "naive-ui": "^2.43.2",
