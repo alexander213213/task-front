@@ -11,6 +11,7 @@ import Label from "../components/ui/label/Label.vue";
 import Skeleton from "../components/ui/skeleton/Skeleton.vue";
 import Separator from "../components/ui/separator/Separator.vue";
 import { usePaginatedFeed } from "../composables/usePaginatedFeed";
+import { onRealtimeEvent, refreshTick } from "../composables/useRealtime";
 import { tasksApi } from "../services/resources/tasks";
 import type { TaskSort } from "../services/types";
 
@@ -45,6 +46,17 @@ watch([q, minReward, maxReward], () => {
 });
 watch(sort, () => void feed.reload());
 onUnmounted(() => window.clearTimeout(debounce));
+
+const newItemsAvailable = ref(false);
+onRealtimeEvent((event) => {
+  if (event.type === "task:created") newItemsAvailable.value = true;
+});
+watch(refreshTick, () => void feed.reload());
+
+async function refreshFromPill(): Promise<void> {
+  newItemsAvailable.value = false;
+  await feed.reload();
+}
 
 const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | undefined;
@@ -128,6 +140,9 @@ function clearFilters(): void {
     </div>
 
     <div v-else class="grid gap-4">
+      <div v-if="newItemsAvailable" class="flex justify-center">
+        <Button variant="secondary" size="sm" @click="refreshFromPill">New tasks available — refresh</Button>
+      </div>
       <TaskCard
         v-for="task in feed.items.value"
         :key="task.id"

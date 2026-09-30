@@ -22,6 +22,7 @@ import Skeleton from "../components/ui/skeleton/Skeleton.vue";
 import Textarea from "../components/ui/textarea/Textarea.vue";
 import { useAuth } from "../composables/useAuth";
 import { useForm } from "../composables/useForm";
+import { onRealtimeEvent } from "../composables/useRealtime";
 import { ApiError } from "../services/api";
 import { proposalsApi, tasksApi } from "../services/resources/tasks";
 import type { TaskDetail } from "../services/types";
@@ -120,6 +121,11 @@ async function withdrawProposal(): Promise<void> {
 }
 
 onMounted(() => void load());
+
+onRealtimeEvent((event) => {
+  const data = event.data as { taskId?: string } | null;
+  if (data && typeof data === "object" && data.taskId === taskId.value) void load();
+});
 </script>
 
 <template>

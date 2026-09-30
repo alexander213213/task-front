@@ -19,6 +19,7 @@ import Skeleton from "../components/ui/skeleton/Skeleton.vue";
 import Textarea from "../components/ui/textarea/Textarea.vue";
 import { useForm } from "../composables/useForm";
 import { usePaginatedFeed } from "../composables/usePaginatedFeed";
+import { onRealtimeEvent, refreshTick } from "../composables/useRealtime";
 import { ApiError } from "../services/api";
 import { tasksApi } from "../services/resources/tasks";
 import type { Task, TaskStatus } from "../services/types";
@@ -40,6 +41,19 @@ const feed = usePaginatedFeed((cursor) =>
 );
 watch(statusFilter, () => void feed.reload());
 onMounted(() => void feed.loadInitial());
+
+const staleAvailable = ref(false);
+onRealtimeEvent((event) => {
+  if (event.type === "proposal:created" || event.type === "task:submitted" || event.type === "task:confirmed") {
+    staleAvailable.value = true;
+  }
+});
+watch(refreshTick, () => void feed.reload());
+
+async function refreshFromPill(): Promise<void> {
+  staleAvailable.value = false;
+  await feed.reload();
+}
 
 function refreshError(err: unknown, fallback: string): void {
   toast.error(err instanceof ApiError ? err.message : fallback);
@@ -246,6 +260,9 @@ async function runPending(): Promise<void> {
     </div>
 
     <div v-else class="grid gap-4">
+      <div v-if="staleAvailable" class="flex justify-center">
+        <Button variant="secondary" size="sm" @click="refreshFromPill">Updates available — refresh</Button>
+      </div>
       <TaskCard v-for="task in feed.items.value" :key="task.id" :task="task">
         <template #actions>
           <Button variant="ghost" size="sm" @click="router.push(`/tasks/${task.id}`)">View</Button>

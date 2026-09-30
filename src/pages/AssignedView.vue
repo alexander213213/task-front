@@ -8,6 +8,7 @@ import TaskCard from "../components/TaskCard.vue";
 import Button from "../components/ui/button/Button.vue";
 import Skeleton from "../components/ui/skeleton/Skeleton.vue";
 import { usePaginatedFeed } from "../composables/usePaginatedFeed";
+import { onRealtimeEvent, refreshTick } from "../composables/useRealtime";
 import { ApiError } from "../services/api";
 import { tasksApi } from "../services/resources/tasks";
 import type { Task, TaskStatus } from "../services/types";
@@ -27,6 +28,19 @@ const feed = usePaginatedFeed((cursor) =>
 );
 watch(statusFilter, () => void feed.reload());
 onMounted(() => void feed.loadInitial());
+
+const staleAvailable = ref(false);
+onRealtimeEvent((event) => {
+  if (event.type === "task:assigned" || event.type === "task:unassigned" || event.type === "task:confirmed") {
+    staleAvailable.value = true;
+  }
+});
+watch(refreshTick, () => void feed.reload());
+
+async function refreshFromPill(): Promise<void> {
+  staleAvailable.value = false;
+  await feed.reload();
+}
 
 const submitting = ref<Task | null>(null);
 const busy = ref(false);
@@ -83,6 +97,9 @@ async function submitWork(): Promise<void> {
     </div>
 
     <div v-else class="grid gap-4">
+      <div v-if="staleAvailable" class="flex justify-center">
+        <Button variant="secondary" size="sm" @click="refreshFromPill">Updates available — refresh</Button>
+      </div>
       <TaskCard v-for="task in feed.items.value" :key="task.id" :task="task">
         <template #actions>
           <Button variant="ghost" size="sm" @click="router.push(`/tasks/${task.id}`)">View</Button>
