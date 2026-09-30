@@ -4,6 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import { z } from "zod";
 import { toast } from "vue-sonner";
 import AppHeader from "../components/AppHeader.vue";
+import ConfirmDialog from "../components/ConfirmDialog.vue";
+import ProposalsManager from "../components/ProposalsManager.vue";
 import TaskCard from "../components/TaskCard.vue";
 import Badge from "../components/ui/badge/Badge.vue";
 import Button from "../components/ui/button/Button.vue";
@@ -39,10 +41,16 @@ const proposalSchema = z.object({
 });
 const proposalForm = useForm(proposalSchema, { title: "", body: "" });
 const showProposal = ref(false);
+const editingProposal = ref(false);
+const withdrawing = ref(false);
+const acting = ref(false);
 
 const isOwner = computed(() => detail.value !== null && auth.user.value !== null && detail.value.ownerId === auth.user.value.id);
 const canPropose = computed(
   () => detail.value !== null && !isOwner.value && detail.value.status === "OPEN" && !detail.value.myProposal
+);
+const canManageProposal = computed(
+  () => detail.value !== null && !isOwner.value && detail.value.status === "OPEN" && detail.value.myProposal !== null
 );
 
 async function load(): Promise<void> {
@@ -60,6 +68,14 @@ async function load(): Promise<void> {
 
 function openProposal(): void {
   proposalForm.reset();
+  editingProposal.value = false;
+  showProposal.value = true;
+}
+
+function openEditProposal(): void {
+  const mine = detail.value?.myProposal;
+  proposalForm.reset({ title: mine?.title ?? "", body: mine?.body ?? "" });
+  editingProposal.value = true;
   showProposal.value = true;
 }
 
@@ -68,8 +84,13 @@ async function submitProposal(): Promise<void> {
   if (!valid.ok) return;
   proposalForm.submitting.value = true;
   try {
-    await proposalsApi.create(taskId.value, valid.data.title.trim(), valid.data.body.trim());
-    toast.success("Proposal sent");
+    if (editingProposal.value) {
+      await proposalsApi.editMine(taskId.value, valid.data.title.trim(), valid.data.body.trim());
+      toast.success("Proposal updated");
+    } else {
+      await proposalsApi.create(taskId.value, valid.data.title.trim(), valid.data.body.trim());
+      toast.success("Proposal sent");
+    }
     showProposal.value = false;
     await load();
   } catch (err) {
@@ -81,6 +102,20 @@ async function submitProposal(): Promise<void> {
     }
   } finally {
     proposalForm.submitting.value = false;
+  }
+}
+
+async function withdrawProposal(): Promise<void> {
+  acting.value = true;
+  try {
+    await proposalsApi.withdrawMine(taskId.value);
+    toast.success("Proposal withdrawn");
+    withdrawing.value = false;
+    await load();
+  } catch (err) {
+    toast.error(err instanceof ApiError ? err.message : "Withdrawal failed");
+  } finally {
+    acting.value = false;
   }
 }
 
@@ -112,12 +147,26 @@ onMounted(() => void load());
       </div>
 
       <Card v-if="detail.myProposal">
-        <div class="p-5">
-          <p class="mb-1 text-sm font-semibold">Your proposal</p>
+        <div class="grid gap-2 p-5">
+          <div class="flex items-center justify-between gap-3">
+            <p class="text-sm font-semibold">Your proposal</p>
+            <div v-if="canManageProposal" class="flex gap-2">
+              <Button variant="outline" size="sm" @click="openEditProposal">Edit</Button>
+              <Button variant="ghost" size="sm" class="text-destructive" @click="withdrawing = true">Withdraw</Button>
+            </div>
+          </div>
           <p class="text-sm font-medium">{{ detail.myProposal.title }}</p>
-          <p class="mt-1 text-sm text-muted-foreground">{{ detail.myProposal.body }}</p>
+          <p class="text-sm text-muted-foreground">{{ detail.myProposal.body }}</p>
         </div>
       </Card>
+
+      <ProposalsManager
+        v-if="isOwner && detail.status === 'OPEN'"
+        :task-id="detail.id"
+        :task-status="detail.status"
+        :assignee-username="detail.tasker?.username ?? null"
+        @assigned="load"
+      />
 
       <Card v-if="detail.tasker">
         <div class="flex items-center justify-between gap-3 p-5">
@@ -142,7 +191,7 @@ onMounted(() => void load());
 
     <Dialog :open="showProposal" @update:open="showProposal = $event">
       <DialogContent>
-        <DialogTitle>Send proposal</DialogTitle>
+        <DialogTitle>{{ editingProposal ? "Edit proposal" : "Send proposal" }}</DialogTitle>
         <DialogDescription>Explain why you're the right person for this task.</DialogDescription>
         <form class="grid gap-4" @submit.prevent="submitProposal">
           <div class="grid gap-2">
@@ -158,11 +207,22 @@ onMounted(() => void load());
           <DialogFooter>
             <Button type="button" variant="ghost" :disabled="proposalForm.submitting.value" @click="showProposal = false">Cancel</Button>
             <Button type="submit" :disabled="proposalForm.submitting.value">
-              {{ proposalForm.submitting.value ? "Sending..." : "Submit proposal" }}
+              {{ proposalForm.submitting.value ? "Saving..." : editingProposal ? "Save changes" : "Submit proposal" }}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+
+    <ConfirmDialog
+      :open="withdrawing"
+      title="Withdraw proposal?"
+      description="Your bid will be removed from this task."
+      confirm-label="Withdraw"
+      destructive
+      :busy="acting"
+      @update:open="withdrawing = $event"
+      @confirm="withdrawProposal"
+    />
   </main>
 </template>
